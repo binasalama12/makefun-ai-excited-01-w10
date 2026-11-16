@@ -31,6 +31,7 @@ function main(): void {
     : resolve(scriptDir, "out.png");
 
   const sourceBytes = readFileSync(sourcePath);
+  const sourceInfo = statSync(sourcePath);
   writeFileSync(outputPath, sourceBytes);
 
   const writtenBytes = readFileSync(outputPath);
@@ -40,12 +41,31 @@ function main(): void {
   const outputDigest = sha256Hex(writtenBytes);
   const identical = sourceDigest === outputDigest;
 
-  console.log(`source: ${basename(sourcePath)}`);
+  // Extra verification pass: the copy must agree with the source
+  // on byte length AND on raw byte content, not only on digest.
+  // A digest match with a size mismatch would signal a truncated
+  // or padded write, so both checks have to pass before we
+  // declare the copy good.
+  const sizeMatches = info.size === sourceInfo.size;
+  const bytesMatch = writtenBytes.equals(sourceBytes);
+  const verified = identical && sizeMatches && bytesMatch;
+
+  if (!verified) {
+    console.error(
+      `verification FAILED: digest=${identical} size=${sizeMatches} bytes=${bytesMatch}`,
+    );
+    process.exitCode = 1;
+  }
+
+  console.log(`source: ${basename(sourcePath)} (${sourceInfo.size} bytes)`);
   console.log(`output: ${outputPath}`);
   console.log(`output_bytes: ${info.size}`);
+  console.log(`size_match: ${sizeMatches ? "yes" : "no"}`);
+  console.log(`bytes_match: ${bytesMatch ? "yes" : "no"}`);
   console.log(`sha256_output: ${outputDigest}`);
   console.log(`sha256_source: ${sourceDigest}`);
   console.log(`match: ${identical ? "yes" : "no"}`);
+  console.log(`verified: ${verified ? "yes" : "no"}`);
 }
 
 main();
